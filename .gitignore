@@ -1,0 +1,9 @@
+db.sqlite3
+.vscode
+__pycache__
+*.pyc
+.DS_Store
+venv
+memo.txt
+youtube-project-389519-953dc2bbe41c.json
+YouTube API python.gsheet
