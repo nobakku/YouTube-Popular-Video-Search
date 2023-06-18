@@ -5,31 +5,36 @@ import datetime as dt
 import gspread
 from google.oauth2.service_account import Credentials
 import math
+from dotenv import load_dotenv
+import os
 
 
 
 def main():
     # 2つのAPIを記述しないとリフレッシュトークンを3600秒毎に発行し続けなければならない
     scope = ['https://www.googleapis.com/auth/spreadsheets','https://www.googleapis.com/auth/drive']
+
+    # 環境変数を読み込み
+    load_dotenv()
+    credentials_content = os.getenv('CREDENTIALS')
+    spreadsheet_key_content = os.getenv('SPREADSHEET_KEY')
+    api_key = os.getenv('API_KEY')
+
     # 認証情報設定
     # ダウンロードしたjsonファイル名をクレデンシャル変数に設定
-    credentials = Credentials.from_service_account_file("youtube-project-389519-953dc2bbe41c.json", scopes=scope)
-    # OAuth2の資格情報を使用してGoogle APIにログインします。
+    credentials = Credentials.from_service_account_file(credentials_content, scopes=scope)
+    # OAuth2の資格情報を使用してGoogle APIにログイン
     gc = gspread.authorize(credentials)
-    # 共有設定したスプレッドシートキーを変数[SPREADSHEET_KEY]に格納する。
-    SPREADSHEET_KEY = '1E3hhcY98R80tXJkBtnKvS64fRDwciYPtdHxYEDDyIjM'
     # 共有設定したスプレッドシートの検索キーワードシートを開く
-    worksheet = gc.open_by_key(SPREADSHEET_KEY).worksheet('検索キーワード')
+    worksheet = gc.open_by_key(spreadsheet_key_content).worksheet('検索キーワード')
     keyword_list = worksheet.col_values(1)
 
-    # Youtube APIキーの記入
-    api_key = 'AIzaSyB84J5-WMPRdLnxl_hVebHgTy4siYhEoL4'
-    # 今から24時間前の時刻をfrom_timeとする（今の時刻のタイムゾーンはYoutubeに合わせて協定世界時刻のutcにする)
+    # 今から24時間前の時刻をfrom_timeとする
     from_time = (dt.datetime.utcnow()-dt.timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%SZ')
     video_url = 'https://www.youtube.com/watch?v='
 
 
-    # データを入れる空のリストを作成
+
     data = []
     # キーワードリストを元に検索
     for keyword in keyword_list:
@@ -37,7 +42,7 @@ def main():
         youtube = build('youtube', 'v3', developerKey=api_key)
         # while文でnextPageTokenがあるまで動画データを取得
         while True:
-            # youtube.search().listで動画情報を取得。結果は辞書型
+            # youtube.search().list()で動画情報を取得。結果は辞書型
             result = youtube.search().list(
                 # 必須パラメーターのpart
                 part='snippet',
@@ -57,29 +62,32 @@ def main():
                 pageToken=next_page_token
             ).execute()
 
-            # もしも動画数が50件以下ならば、dataに情報を追加してbreak
+            # 動画数が50件以下の場合
             if len(result['items']) < 50:
                 for i in result['items']:
                     data.append([i['id']['videoId'], i['snippet']['publishedAt'], i['snippet']['title'], keyword])
                 break
-            # もしも動画数が50件より多い場合はページ送りのトークン(result['nextPageToken']を変数next_page_tokenに設定
+            # 動画数が50件より多い場合
             else:
                 for i in result['items']:
                     data.append([i['id']['videoId'], i['snippet']['publishedAt'], i['snippet']['title'], keyword])
                 next_page_token = result['nextPageToken']
 
-            # 取得できた中身 data = [[videoId, 投稿日, 動画タイトル, 検索キーワード], [videoId, 投稿日, 動画タイトル, 検索キーワード], ...]
+            """
+            ここまでで取得できたリストの中身
+            data = [[videoId, 投稿日, 動画タイトル, 検索キーワード], [videoId, 投稿日, 動画タイトル, 検索キーワード], ...]
+            """
+
 
 
     # video_idリストを作成
     video_id_list = []
     for i in data:
         video_id_list.append(i[0])
-    # video_idリストの中の重複を取り除く
+    # 重複を取り除く
     video_id_list = sorted(set(video_id_list), key=video_id_list.index)
 
     # 50のセットの数(次のデータ取得で最大50ずつしかデータが取れないため、50のセットの数を数えている)
-    # math.ceilは小数点以下は繰り上げの割り算 例 math.ceil(3.4) = 4
     data_length = len(data)
     _set_50 = math.ceil(data_length / 50)
 
@@ -122,8 +130,9 @@ def main():
     df_data['view_count'] = df_data['view_count'].astype(str)
 
 
+
     #共有設定したスプレッドシートの検索結果シートを開く
-    worksheet = gc.open_by_key(SPREADSHEET_KEY).worksheet('検索結果')
+    worksheet = gc.open_by_key(spreadsheet_key_content).worksheet('検索結果')
     list1 = worksheet.range('A1:E10')
     list2 = worksheet.get_all_values()
     # ワークシートに要素が書き込まれているかを確認
@@ -139,8 +148,7 @@ def main():
         worksheet.update_cells(cell_columns)
         last_row += 1
 
-
-    # もしdf_dataにデータが入っていない場合は書き込みをpass（Youtube APIで情報が取得されなかった場合)
+    # df_dataにデータが入っていない場合は書き込みをpass（Youtube APIで情報が取得されなかった場合)
     length = df_data.shape[0] # df_dataの行数
     if length == 0:
         pass
